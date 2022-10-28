@@ -92,14 +92,8 @@ esp_err_t bme280_init_sensor(sensor_driver_t *handle)
 	tmc2208->bme280_device.intf = BME280_I2C_INTF;
 	tmc2208->bme280_device.delay_us = BME280_delay_us;
 
-	//struct identifier id;
-
-    //id.dev_addr = BME280_I2C_ADDR_PRIM;
-
     tmc2208->bme280_device.intf_ptr = &tmc2208->driver_config.dev_id;
 
-    //uint8_t dev_id = BME280_I2C_ADDR_PRIM;
-    //tmc2208->bme280_device.intf_ptr = &dev_id;
 
 	ret = bme280_init(&tmc2208->bme280_device);
 
@@ -110,11 +104,6 @@ esp_err_t bme280_init_sensor(sensor_driver_t *handle)
 
 	uint8_t desired_settings = BME280_OSR_PRESS_SEL | BME280_OSR_TEMP_SEL | BME280_OSR_HUM_SEL | BME280_FILTER_SEL;
 	ret = bme280_set_sensor_settings(desired_settings, &tmc2208->bme280_device);
-
-
-	vTaskDelay(1000/portTICK_PERIOD_MS);
-
-
 
     return ret;
 }
@@ -136,9 +125,10 @@ esp_err_t bme280_read_values(sensor_driver_t *handle)
 	ret = bme280_set_sensor_mode(BME280_FORCED_MODE, &tmc2208->bme280_device);
 
 	uint32_t delay = bme280_cal_meas_delay(&tmc2208->bme280_device.settings);
-	ESP_LOGE(TAG, "delay: %d", delay);
-//vTaskDelay(10/portTICK_PERIOD_MS);
-	 tmc2208->bme280_device.delay_us(10000, tmc2208->bme280_device.intf_ptr);
+	if (delay < 10) {
+		delay = 10;
+	}
+	tmc2208->bme280_device.delay_us(delay * 1000, tmc2208->bme280_device.intf_ptr);
 
 
 	struct bme280_data comp_data;
