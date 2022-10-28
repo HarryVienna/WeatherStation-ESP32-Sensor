@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.16.0)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-list(APPEND EXTRA_COMPONENT_DIRS "components/wifi_smartconfig")
+list(APPEND EXTRA_COMPONENT_DIRS "components/wifi_smartconfig" "components/sensor_driver")
 project(ESP32WeatherStationSensor)
 
 

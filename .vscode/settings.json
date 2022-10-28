@@ -70,7 +70,10 @@
         "chrono": "c",
         "algorithm": "c",
         "gpio_ll.h": "c",
-        "gpio_types.h": "c"
+        "gpio_types.h": "c",
+        "bme280.h": "c",
+        "sensor_driver.h": "c",
+        "sensor_driver_bme280.h": "c"
     },
     "cmake.cmakePath": "c:\\Users\\Harald\\.platformio\\packages\\tool-cmake\\bin\\cmake.exe"
 }

@@ -1,4 +1,5 @@
-set(component_srcs "src/sensor_driver.c"
+set(component_srcs "src/bme280.c"
+                   "src/sensor_driver.c"
                    "src/sensor_driver_bme280.c"
 )
 

@@ -42,7 +42,6 @@ static EventGroupHandle_t s_wifi_event_group;
 static void connect_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 
 static int s_retry_num;
-static bool s_connected;
 
 typedef struct {
     wifi_t parent;
@@ -156,7 +155,6 @@ static esp_err_t smartconfig_connect(wifi_t *wifi)
         ESP_LOGE(TAG, "Nothing in flash");
     }
     
-    s_connected = false;
     
     /* -------------- Try to connect with stored settings ------------- */
     s_retry_num = 0;
@@ -263,24 +261,15 @@ static void connect_event_handler(void* arg, esp_event_base_t event_base, int32_
         ESP_LOGI(TAG,"WIFI_EVENT_STA_STOP");
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_CONNECTED) {        
         ESP_LOGI(TAG,"WIFI_EVENT_STA_CONNECTED");
-        s_connected = true;
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         ESP_LOGI(TAG,"WIFI_EVENT_STA_DISCONNECTED");
-        if (s_connected) { // WIFI was already connected. Perhaps router down? Try reconnecting 
-            while (true) {
-                esp_wifi_connect();
-                vTaskDelay((1000 * 60) / portTICK_PERIOD_MS); // Wait 1 minute
-            }            
-        }
-        else {             // WIFI was not connected. So there is a problem
-            if (s_retry_num < MAXIMUM_RETRY) {
-                ESP_LOGI(TAG, "retry to connect to the AP");
-                esp_wifi_connect();
-                s_retry_num++;
-                
-            } else {
-                xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
-            }
+        if (s_retry_num < MAXIMUM_RETRY) {
+            ESP_LOGI(TAG, "retry to connect to the AP");
+            esp_wifi_connect();
+            s_retry_num++;
+            
+        } else {
+            xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
         }
 
         ESP_LOGI(TAG,"connect to the AP fail");

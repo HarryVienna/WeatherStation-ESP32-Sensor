@@ -6,6 +6,7 @@
 #include "freertos/event_groups.h"
 #include "driver/gpio.h"
 #include "driver/adc.h"
+#include "driver/i2c.h"
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 
@@ -16,7 +17,21 @@
 #include "wifi.h"
 #include "mqtt_client.h"
 
+#include "sensor_driver_bme280.h"
+
+
+
 #define NO_OF_SAMPLES   16 
+
+
+#define SDA_PIN GPIO_NUM_21
+#define SCL_PIN GPIO_NUM_22
+#define BME280_ADDRESS BME280_I2C_ADDR_SEC
+#define I2C_MASTER_ACK 0
+#define I2C_MASTER_NACK 1
+#define BME280_CALLBACK_OK 0
+#define BME280_CALLBACK_FAIL -1
+
 
 #define MQTT_CONNECTED_BIT BIT0
 #define MQTT_PUBLISHED_BIT BIT1
@@ -52,6 +67,45 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     }
 }
 
+
+esp_err_t blink() {
+    gpio_pad_select_gpio(GPIO_NUM_2);
+    gpio_set_direction(GPIO_NUM_2, GPIO_MODE_OUTPUT);
+    gpio_set_level(GPIO_NUM_2, 1);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+    gpio_set_level(GPIO_NUM_2, 0);
+
+    return ESP_OK;
+}
+
+esp_err_t getVoltage(uint32_t *voltage) 
+{
+    esp_adc_cal_characteristics_t adc1_chars;
+    
+    esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_DEFAULT, ESP_ADC_CAL_VAL_EFUSE_VREF, &adc1_chars);
+    adc1_config_width(ADC_WIDTH_BIT_DEFAULT);
+    adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_DB_11);
+
+    uint32_t adc_reading = 0;
+    for (int i = 0; i < NO_OF_SAMPLES; i++) {
+        adc_reading += adc1_get_raw(ADC1_CHANNEL_7);
+    }
+    adc_reading /= NO_OF_SAMPLES;
+    ESP_LOGI(TAG, "raw  data: %d", adc_reading);
+    *voltage = esp_adc_cal_raw_to_voltage(adc_reading, &adc1_chars) * 2; // Voltage divider is 1:1
+
+    return ESP_OK;
+}
+
+
+void i2c_init(i2c_config_t *i2c_config)
+{
+
+	ESP_ERROR_CHECK(i2c_param_config(I2C_NUM_0, i2c_config));
+	ESP_ERROR_CHECK(i2c_driver_install(I2C_NUM_0, i2c_config->mode, 0, 0, 0));
+}
+
+
 void app_main(){
 
     WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
@@ -59,34 +113,52 @@ void app_main(){
     ++boot_count;
     ESP_LOGI(TAG, "Boot count: %d", boot_count);
 
-    gpio_pad_select_gpio(GPIO_NUM_2);
-    gpio_set_direction(GPIO_NUM_2, GPIO_MODE_OUTPUT);
-    gpio_set_level(GPIO_NUM_2, 1);
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-    gpio_set_level(GPIO_NUM_2, 0);
-
     esp_err_t ret;
 
-
-
-
-
-    static esp_adc_cal_characteristics_t adc1_chars;
-    
-    ESP_ERROR_CHECK(esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_DEFAULT, ESP_ADC_CAL_VAL_EFUSE_VREF, &adc1_chars));
-    ESP_ERROR_CHECK(adc1_config_width(ADC_WIDTH_BIT_DEFAULT));
-    ESP_ERROR_CHECK(adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_DB_11));
+    ret = blink();
 
     uint32_t voltage = 0;    
-    uint32_t adc_reading = 0;
-    for (int i = 0; i < NO_OF_SAMPLES; i++) {
-        adc_reading += adc1_get_raw(ADC1_CHANNEL_7);
-    }
-    adc_reading /= NO_OF_SAMPLES;
-    ESP_LOGI(TAG, "raw  data: %d", adc_reading);
-    voltage = esp_adc_cal_raw_to_voltage(adc_reading, &adc1_chars) * 2; // Voltage divider is 1:1
+    ret = getVoltage(&voltage);
     ESP_LOGI(TAG, "voltage: %d", voltage);
 
+
+
+	i2c_config_t i2c_config = {
+		.mode = I2C_MODE_MASTER,
+		.sda_io_num = SDA_PIN,
+		.scl_io_num = SCL_PIN,
+		.sda_pullup_en = GPIO_PULLUP_ENABLE,
+		.scl_pullup_en = GPIO_PULLUP_ENABLE,
+		.master.clk_speed = 100000
+	};
+
+    i2c_init(&i2c_config);
+
+
+
+    const sensor_driver_bme280_conf_t bme280_config = {
+        .osr_p = BME280_OVERSAMPLING_1X,
+        .osr_t = BME280_OVERSAMPLING_1X,
+        .osr_h = BME280_OVERSAMPLING_1X,
+        .filter = BME280_FILTER_COEFF_OFF,
+        .dev_id = BME280_I2C_ADDR_PRIM
+    };
+
+    sensor_driver_t *bme280_driver = sensor_driver_new_bme280(&bme280_config);
+    
+
+
+    ret = sensor_driver_init_sensor(bme280_driver);
+
+    vTaskDelay(1000/portTICK_PERIOD_MS);
+  
+    while (true) {
+        sensor_driver_read_values(bme280_driver);
+
+
+
+        vTaskDelay(10000/portTICK_PERIOD_MS);
+    }
 
 
 
@@ -104,13 +176,10 @@ void app_main(){
             ret = smartconfig->connect(smartconfig);
         }
         while (ret != ESP_OK);
-
-        smartconfig->init_sntp(smartconfig);
-
-        smartconfig->init_timezone(smartconfig);
     }
 
-     // Create a new event group.
+
+    // Create a new event group.
     s_mqtt_event_group = xEventGroupCreate();
     if (s_mqtt_event_group == NULL) {
         ESP_LOGE(TAG, "Failed to create event group");
@@ -134,9 +203,9 @@ void app_main(){
             ESP_LOGI(TAG, "MQTT_CONNECTED_BIT");    
             char* json = "{  \"battery\": %d,  \"temperature\": %f,  \"humidity\": %f,  \"pressure\": %f}";
             char message[128];
-            sprintf(message, json, voltage, 0.0, 1.0, 2.0);
+            //sprintf(message, json, voltage, comp_data.temperature, comp_data.humidity, comp_data.pressure/100.0);
             ESP_LOGI(TAG, "message %s", message);  
-            int msg_id = esp_mqtt_client_publish(client, "/weatherstation/bedroom", message, 0, 1, 0);
+            int msg_id = esp_mqtt_client_publish(client, "/weatherstation/balcony", message, 0, 1, 0);
             ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
         } else if (bits & MQTT_PUBLISHED_BIT) {
             ESP_LOGI(TAG, "MQTT_PUBLISHED_BIT");
