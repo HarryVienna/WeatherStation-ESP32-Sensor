@@ -145,20 +145,14 @@ void app_main(){
     };
 
     sensor_driver_t *bme280_driver = sensor_driver_new_bme280(&bme280_config);
-    
-
 
     ret = sensor_driver_init_sensor(bme280_driver);
 
-    vTaskDelay(1000/portTICK_PERIOD_MS);
-  
-    while (true) {
-        sensor_driver_read_values(bme280_driver);
+    sensor_data_t values;
+    sensor_driver_read_values(bme280_driver, &values);
 
+    ESP_LOGI(TAG, "%0.2f degC / %.2f kPa / %.2f %%", values.temperature, values.pressure, values.humidity);
 
-
-        vTaskDelay(10000/portTICK_PERIOD_MS);
-    }
 
 
 
@@ -203,9 +197,9 @@ void app_main(){
             ESP_LOGI(TAG, "MQTT_CONNECTED_BIT");    
             char* json = "{  \"battery\": %d,  \"temperature\": %f,  \"humidity\": %f,  \"pressure\": %f}";
             char message[128];
-            //sprintf(message, json, voltage, comp_data.temperature, comp_data.humidity, comp_data.pressure/100.0);
+            sprintf(message, json, voltage, values.temperature, values.humidity, values.pressure);
             ESP_LOGI(TAG, "message %s", message);  
-            int msg_id = esp_mqtt_client_publish(client, "/weatherstation/balcony", message, 0, 1, 0);
+            int msg_id = esp_mqtt_client_publish(client, "/weatherstation/livingroom", message, 0, 1, 0);
             ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
         } else if (bits & MQTT_PUBLISHED_BIT) {
             ESP_LOGI(TAG, "MQTT_PUBLISHED_BIT");

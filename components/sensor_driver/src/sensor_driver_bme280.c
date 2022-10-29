@@ -65,10 +65,12 @@ int8_t BME280_I2C_bus_read(uint8_t reg_addr, uint8_t *reg_data, uint32_t cnt, vo
 	return espRc;
 }
 
-void BME280_delay_us(uint32_t v, void *intf_ptr)
+void BME280_delay_us(uint32_t delay, void *intf_ptr)
 {
-	vTaskDelay(v/1000/portTICK_PERIOD_MS);
+	//vTaskDelay(v/1000/portTICK_PERIOD_MS);
+	ets_delay_us(delay);  // Be carefull, should not be used in FreeRTOS
 }
+
 
 // |================================================================================================ |
 // |                                           Initialisation                                        |
@@ -113,7 +115,7 @@ esp_err_t bme280_init_sensor(sensor_driver_t *handle)
  *
  * @param motor handle to stepper_driver_t type object
  */
-esp_err_t bme280_read_values(sensor_driver_t *handle)
+esp_err_t bme280_read_values(sensor_driver_t *handle, sensor_data_t *values)
 {
     esp_err_t ret = ESP_OK;
 	sensor_driver_bme280_t *tmc2208 = __containerof(handle, sensor_driver_bme280_t, parent);
@@ -125,9 +127,10 @@ esp_err_t bme280_read_values(sensor_driver_t *handle)
 	ret = bme280_set_sensor_mode(BME280_FORCED_MODE, &tmc2208->bme280_device);
 
 	uint32_t delay = bme280_cal_meas_delay(&tmc2208->bme280_device.settings);
-	if (delay < 10) {
-		delay = 10;
-	}
+	//if (delay < 10) {
+	//	delay = 10;
+	//}
+	ESP_LOGE(TAG, "delay: %d", delay);
 	tmc2208->bme280_device.delay_us(delay * 1000, tmc2208->bme280_device.intf_ptr);
 
 
@@ -136,11 +139,11 @@ esp_err_t bme280_read_values(sensor_driver_t *handle)
 	ret = bme280_get_sensor_data(BME280_ALL, &comp_data, &tmc2208->bme280_device);
 
 	if (ret == BME280_OK) {
-		ESP_LOGI(TAG, "%0.2f degC / %.2f kPa / %.2f %%", comp_data.temperature, comp_data.pressure/100.0, comp_data.humidity);
-	} else {
-		ESP_LOGE(TAG, "measure error. code: %d", ret);
-	}	
-
+		values->temperature = comp_data.temperature;
+		values->pressure = comp_data.pressure / 100.0;
+		values->humidity = comp_data.humidity;
+		ESP_LOGI(TAG, "%0.2f degC / %.2f kPa / %.2f %%", comp_data.temperature, comp_data.pressure, comp_data.humidity);
+	} 	
 
     return ret;
 }
