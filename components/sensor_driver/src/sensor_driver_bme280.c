@@ -52,10 +52,8 @@ int8_t BME280_I2C_bus_read(uint8_t reg_addr, uint8_t *reg_data, uint32_t cnt, vo
 	ESP_ERROR_CHECK(i2c_master_start(cmd));
 	ESP_ERROR_CHECK(i2c_master_write_byte(cmd, (id << 1) | I2C_MASTER_READ, true));
 
-	if (cnt > 1) {
-		ESP_ERROR_CHECK(i2c_master_read(cmd, reg_data, cnt-1, I2C_MASTER_ACK));
-	}
-	ESP_ERROR_CHECK(i2c_master_read_byte(cmd, reg_data+cnt-1, I2C_MASTER_NACK));
+	ESP_ERROR_CHECK(i2c_master_read(cmd, reg_data, cnt, I2C_MASTER_LAST_NACK));
+
 	ESP_ERROR_CHECK(i2c_master_stop(cmd));
 
 	espRc = i2c_master_cmd_begin(I2C_NUM_0, cmd, 10/portTICK_PERIOD_MS);
