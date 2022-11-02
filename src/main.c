@@ -17,7 +17,8 @@
 #include "wifi.h"
 #include "mqtt_client.h"
 
-#include "sensor_driver_bme280.h"
+#include "hdc1080_sensor_driver.h"
+#include "bme280_sensor_driver.h"
 
 
 
@@ -26,11 +27,6 @@
 
 #define SDA_PIN GPIO_NUM_21
 #define SCL_PIN GPIO_NUM_22
-#define BME280_ADDRESS BME280_I2C_ADDR_SEC
-#define I2C_MASTER_ACK 0
-#define I2C_MASTER_NACK 1
-#define BME280_CALLBACK_OK 0
-#define BME280_CALLBACK_FAIL -1
 
 
 #define MQTT_CONNECTED_BIT BIT0
@@ -133,6 +129,22 @@ void app_main(){
 	};
 
     i2c_init(&i2c_config);
+
+
+
+    const sensor_driver_hdc1080_conf_t hdc1080_config = {
+        .humidity_resolution = humidity_14bit,
+        .temperature_resolution = temperature_14bit,
+        .i2c_addr = HDC1080_I2C_ADDR
+    };
+ESP_LOGI(TAG, "sensor_driver_new_hdc1080");
+    sensor_driver_t *hdc1080_driver = sensor_driver_new_hdc1080(&hdc1080_config);
+ESP_LOGI(TAG, "sensor_driver_init_sensor");
+    ret = sensor_driver_init_sensor(hdc1080_driver);
+
+    sensor_data_t values_hdc1080;
+    sensor_driver_read_values(hdc1080_driver, &values_hdc1080);
+
 
 
 

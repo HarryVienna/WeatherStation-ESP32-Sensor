@@ -8,7 +8,6 @@
 #include "sensor_driver.h"
 
 
-typedef struct sensor_driver_s sensor_driver_t;
 
 /**
 * @brief Sensor Configuration Type
@@ -35,7 +34,7 @@ typedef struct {
 
 
 /**
-* @brief Install a new TMC2208 driver 
+* @brief Install a new BME280 driver 
 *
 * @param config: step motor configuration
 * @return

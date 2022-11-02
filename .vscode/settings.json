@@ -73,7 +73,9 @@
         "gpio_types.h": "c",
         "bme280.h": "c",
         "sensor_driver.h": "c",
-        "sensor_driver_bme280.h": "c"
+        "sensor_driver_bme280.h": "c",
+        "bme280_sensor_driver.h": "c",
+        "hdc1080_sensor_driver.h": "c"
     },
     "cmake.cmakePath": "c:\\Users\\Harald\\.platformio\\packages\\tool-cmake\\bin\\cmake.exe"
 }

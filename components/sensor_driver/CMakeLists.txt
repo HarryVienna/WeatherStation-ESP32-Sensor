@@ -1,6 +1,7 @@
 set(component_srcs "src/bme280.c"
                    "src/sensor_driver.c"
-                   "src/sensor_driver_bme280.c"
+                   "src/bme280_sensor_driver.c"
+                   "src/hdc1080_sensor_driver.c"
 )
 
 idf_component_register(SRCS "${component_srcs}"
