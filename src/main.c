@@ -28,6 +28,7 @@
 #define SDA_PIN GPIO_NUM_21
 #define SCL_PIN GPIO_NUM_22
 
+#define I2C_MASTER_FREQ_HZ 100000
 
 #define MQTT_CONNECTED_BIT BIT0
 #define MQTT_PUBLISHED_BIT BIT1
@@ -125,7 +126,7 @@ void app_main(){
 		.scl_io_num = SCL_PIN,
 		.sda_pullup_en = GPIO_PULLUP_ENABLE,
 		.scl_pullup_en = GPIO_PULLUP_ENABLE,
-		.master.clk_speed = 100000
+		.master.clk_speed = I2C_MASTER_FREQ_HZ
 	};
 
     i2c_init(&i2c_config);
@@ -134,12 +135,12 @@ void app_main(){
 
     const sensor_driver_hdc1080_conf_t hdc1080_config = {
         .humidity_resolution = humidity_14bit,
-        .temperature_resolution = temperature_14bit,
+        .temperature_resolution = temperature_11bit,
         .i2c_addr = HDC1080_I2C_ADDR
     };
-ESP_LOGI(TAG, "sensor_driver_new_hdc1080");
+
     sensor_driver_t *hdc1080_driver = sensor_driver_new_hdc1080(&hdc1080_config);
-ESP_LOGI(TAG, "sensor_driver_init_sensor");
+
     ret = sensor_driver_init_sensor(hdc1080_driver);
 
     sensor_data_t values_hdc1080;

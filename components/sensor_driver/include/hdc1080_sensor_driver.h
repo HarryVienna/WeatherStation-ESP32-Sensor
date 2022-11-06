@@ -8,8 +8,9 @@
 
 #define HDC1080_I2C_ADDR 0x40
 
-/**\name HDC1080 device id */
 #define HDC1080_DEVICE_ID 0x1050
+
+#define DEVICE_STARTUP_TIME 15
 
 typedef enum {
 	humidity_8bit = 0x02,
@@ -61,26 +62,19 @@ typedef union {
 	uint16_t value;
 	struct {
         uint16_t
-		humidity_bitwidth : 2,
-		temperature_bitwidth : 1,
+        unused : 8,
+		humidity_resolution : 2,
+		temperature_resolution : 1,
 		battery_status : 1,
 		acquisition_mode : 1,
 		heater : 1,
-		reserved_again : 1,
-		software_reset : 1,
-        reserved : 8;
+		reserved : 1,
+		software_reset : 1;
+
 	};
 } hdc1080_configuration_register_t;
 
-typedef union {
-	uint64_t value;
-	struct {
-		uint16_t serialLast;
-		uint16_t serialMid;
-        uint16_t serialFirst;		
-        uint16_t unused;
-	};
-} hdc1080_serial_t;
+
 
 typedef union {
 	uint64_t value;
@@ -94,7 +88,7 @@ typedef union {
 		serial_2 : 5,
         unused : 16;
  	};
-} hdc1080_serial2_t;
+} hdc1080_serial_t;
 
 /**
 * @brief Sensor Configuration Type
