@@ -171,7 +171,7 @@ esp_err_t hdc1080_get_regs(uint8_t reg_addr, uint8_t *reg_data, uint32_t len, ui
 {
     esp_err_t rslt = ESP_OK;
 
-    rslt = hdc1080_i2c_read_(reg_addr, reg_data, len, i2c_addr);
+    rslt = hdc1080_i2c_read(reg_addr, reg_data, len, i2c_addr);
     swap_bytes(reg_data, len);
 
     return rslt;
@@ -194,84 +194,93 @@ esp_err_t hdc1080_write_reg(uint8_t reg_addr, uint16_t reg_data,  uint8_t i2c_ad
 // |================================================================================================ |
 
 /**
- * @brief Init Stepper
+ * @brief Init Sensor
  *
- * @param motor handle to stepper_driver_t type object
+ * @param handle handle to sensor_driver_t type object
  */
 esp_err_t hdc1080_init_sensor(sensor_driver_t *handle)
 {
     esp_err_t ret = ESP_OK;
+
     sensor_driver_hdc1080_t *hdc1080 = __containerof(handle, sensor_driver_hdc1080_t, parent);
+    sensor_driver_hdc1080_conf_t hdc1080_config = hdc1080->driver_config;
 
-
-   vTaskDelay(DEVICE_STARTUP_TIME / portTICK_PERIOD_MS);
-
+    vTaskDelay(DEVICE_STARTUP_TIME / portTICK_PERIOD_MS);
 
     uint16_t device_id = 0;
-    uint16_t manufacturer_id = 0;
-    hdc1080_serial_t serial_id;
-    uint16_t serial_first = 0;
-    uint16_t serial_mid = 0;
-    uint16_t serial_last = 0;
-    
-
-    ret |= hdc1080_get_regs(REG_DEVICE_ID, (uint8_t*) &device_id, 2, hdc1080->driver_config.i2c_addr);
-ESP_LOGE(TAG, "rslt: %d", ret);
-    ret |= hdc1080_get_regs(REG_MANUFACTURER_ID, (uint8_t*) &manufacturer_id, 2, hdc1080->driver_config.i2c_addr);
-ESP_LOGE(TAG, "rslt: %d", ret);
-    
-    ret |= hdc1080_get_regs(REG_SERIAL_ID_FIRST, (uint8_t*) &serial_first, 2, hdc1080->driver_config.i2c_addr);
-    ESP_LOGE(TAG, "rslt: %d", ret);
-    ret |= hdc1080_get_regs(REG_SERIAL_ID_MID,   (uint8_t*) &serial_mid,   2, hdc1080->driver_config.i2c_addr);
-    ESP_LOGE(TAG, "rslt: %d", ret);
-    ret |= hdc1080_get_regs(REG_SERIAL_ID_LAST,  (uint8_t*) &serial_last,  2, hdc1080->driver_config.i2c_addr);
-    ESP_LOGE(TAG, "rslt: %d", ret);
-
-    ESP_LOGE(TAG, "serial_id: fb %x fc %x fd %x", serial_first, serial_mid, serial_last);
-    ESP_LOGE(TAG, "serial_id: fb %llx fc %llx fd %llx", (uint64_t)serial_first<<32, (uint64_t)serial_mid<<16, (uint64_t)serial_last);
-
-    serial_id.value = (uint64_t)serial_first<<32 | (uint64_t)serial_mid<<16 | (uint64_t)serial_last;
-    ESP_LOGE(TAG, "year: %d", serial_id.year);
-    ESP_LOGE(TAG, "day: %d", serial_id.day);
-    ESP_LOGE(TAG, "month: %d", serial_id.month);
-
-    ESP_LOGE(TAG, "device_id   manufacturer_id  %d %x %x", ret, device_id, manufacturer_id);
-
-
-
-
-    uint16_t conf = 0;
-    //ret =  hdc1080_get_regs(REG_CONFIGURATION, (uint8_t*) &conf, 2, hdc1080->driver_config.i2c_addr);
-    ret =  hdc1080_get_regs(REG_CONFIGURATION, (uint8_t*) &conf, 2, hdc1080->driver_config.i2c_addr);
-    ESP_LOGE(TAG, "hdc1080_get_regs rslt: %d %x", ret, conf);
-
-    hdc1080_configuration_register_t c = {
-        .software_reset = 0,
-        .heater = 0,
-        .acquisition_mode = 1,
-        .humidity_resolution = hdc1080->driver_config.humidity_resolution,
-        .temperature_resolution = hdc1080->driver_config.temperature_resolution,
-    };
-
-    ret = hdc1080_write_reg(REG_CONFIGURATION, c.value, hdc1080->driver_config.i2c_addr);
-    ESP_LOGE(TAG, "hdc1080_i2c_write rslt: %d", ret);
-
-    ret =  hdc1080_get_regs(REG_CONFIGURATION, (uint8_t*) &conf, 2, hdc1080->driver_config.i2c_addr);
-    ESP_LOGE(TAG, "hdc1080_get_regs rslt: %d %x %x", ret, c.value, conf);
-
-
  
-    /* Check for chip id validity */
-    if ((ret == ESP_OK) && (device_id == HDC1080_DEVICE_ID))
+    uint8_t try_count = 5;
+    while (try_count)
     {
-        //dev->device_id = device_id;
-        //dev->manufacturer_id= manufacturer_id;
+        ret = hdc1080_get_regs(REG_DEVICE_ID, (uint8_t*) &device_id, sizeof(device_id), hdc1080_config.i2c_addr);
 
-        ESP_LOGE(TAG, "device_id   manufacturer_id  %d %x %x", ret, device_id, manufacturer_id);
-        /* Reset the sensor */
-        //rslt = bme280_soft_reset(dev);
+        /* Check for chip id validity */
+        if ((ret == ESP_OK) && (device_id == HDC1080_DEVICE_ID))
+        {
+            hdc1080->hdc1080_device.device_id = device_id;
 
+            uint16_t manufacturer_id = 0;
+            hdc1080_get_regs(REG_MANUFACTURER_ID, (uint8_t*) &manufacturer_id, sizeof(manufacturer_id), hdc1080_config.i2c_addr);
+            hdc1080->hdc1080_device.manufacturer_id = manufacturer_id;
+
+            uint16_t serial_first = 0;
+            uint16_t serial_mid = 0;
+            uint16_t serial_last = 0;
+            hdc1080_get_regs(REG_SERIAL_ID_FIRST, (uint8_t*) &serial_first, sizeof(serial_first), hdc1080_config.i2c_addr);
+            hdc1080_get_regs(REG_SERIAL_ID_MID,   (uint8_t*) &serial_mid,   sizeof(serial_mid),   hdc1080_config.i2c_addr);
+            hdc1080_get_regs(REG_SERIAL_ID_LAST,  (uint8_t*) &serial_last,  sizeof(serial_last),  hdc1080_config.i2c_addr);
+            hdc1080_serial_t serial_id;
+            serial_id.value = (uint64_t)serial_first<<32 | (uint64_t)serial_mid<<16 | (uint64_t)serial_last;
+            hdc1080->hdc1080_device.serial_id = serial_id;
+
+            ESP_LOGE(TAG, "Device ID: %x   Manufacturer ID: %x", device_id, manufacturer_id);
+            ESP_LOGE(TAG, "year: %d", serial_id.year);
+            ESP_LOGE(TAG, "day: %d", serial_id.day);
+            ESP_LOGE(TAG, "month: %d", serial_id.month);
+
+            break;
+        }
+        
+        /* Wait for 10 ms */
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+        --try_count;
     }
+
+    /* Chip id check failed */
+    if (!try_count)
+    {
+        ret = ESP_ERR_NOT_FOUND;
+    }
+
+    if (ret == ESP_OK) 
+    {
+        hdc1080_configuration_register_t config = {
+            .software_reset = 0,
+            .heater = 0,
+            .acquisition_mode = 1,
+            .humidity_resolution = hdc1080->driver_config.humidity_resolution,
+            .temperature_resolution = hdc1080->driver_config.temperature_resolution,
+        };
+
+        hdc1080_write_reg(REG_CONFIGURATION, config.value, hdc1080_config.i2c_addr);
+    }
+
+    return ret;
+}
+
+/**
+ * @brief Read values from sensor
+ *
+ * @param motor handle to sensor_driver_t type object
+ */
+esp_err_t hdc1080_read_values(sensor_driver_t *handle, sensor_data_t *values)
+{
+    esp_err_t ret = ESP_OK;
+
+    sensor_driver_hdc1080_t *hdc1080 = __containerof(handle, sensor_driver_hdc1080_t, parent);
+    sensor_driver_hdc1080_conf_t hdc1080_config = hdc1080->driver_config;
+
+
 
     uint8_t raw[4];
     uint16_t result;
@@ -286,19 +295,7 @@ ESP_LOGE(TAG, "rslt: %d", ret);
     ESP_LOGE(TAG, "temp  humidity %f %f", temperature, humidity);
 
     return ret;
-}
 
-/**
- * @brief Clear GSTAT register
- *
- * @param motor handle to stepper_driver_t type object
- */
-esp_err_t hdc1080_read_values(sensor_driver_t *handle, sensor_data_t *values)
-{
-    esp_err_t ret = ESP_OK;
-
-
-    return ret;
 }
 
 

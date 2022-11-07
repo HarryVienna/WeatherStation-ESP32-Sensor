@@ -110,7 +110,7 @@ struct hdc1080_dev
     uint16_t manufacturer_id;
 
 	/*< Serial ID */
-    uint64_t serial_id;
+    hdc1080_serial_t serial_id;
 
     /*< I2C address */
     uint8_t i2c_addr;
