@@ -10,7 +10,8 @@
 
 #define HDC1080_DEVICE_ID 0x1050
 
-#define DEVICE_STARTUP_TIME 15
+#define DEVICE_TICKS_TO_WAIT 10
+#define DEVICE_STARTUP_TIME_MS 15
 
 typedef enum {
 	humidity_8bit = 0x02,

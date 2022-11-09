@@ -143,12 +143,13 @@ void app_main(){
 
     ret = sensor_driver_init_sensor(hdc1080_driver);
 
-    sensor_data_t values_hdc1080;
-    sensor_driver_read_values(hdc1080_driver, &values_hdc1080);
+    sensor_data_t values;
+    sensor_driver_read_values(hdc1080_driver, &values);
+
+   ESP_LOGI(TAG, "%0.2f C / %.2f %%", values.temperature, values.humidity);
 
 
-
-
+/*
     const sensor_driver_bme280_conf_t bme280_config = {
         .osr_p = BME280_OVERSAMPLING_1X,
         .osr_t = BME280_OVERSAMPLING_1X,
@@ -163,9 +164,8 @@ void app_main(){
 
     sensor_data_t values;
     sensor_driver_read_values(bme280_driver, &values);
-
-    ESP_LOGI(TAG, "%0.2f degC / %.2f kPa / %.2f %%", values.temperature, values.pressure, values.humidity);
-
+*/
+ 
 
 
 
@@ -212,7 +212,7 @@ void app_main(){
             char message[128];
             sprintf(message, json, voltage, values.temperature, values.humidity, values.pressure);
             ESP_LOGI(TAG, "message %s", message);  
-            int msg_id = esp_mqtt_client_publish(client, "/weatherstation/livingroom", message, 0, 1, 0);
+            int msg_id = esp_mqtt_client_publish(client, "/weatherstation/balcony", message, 0, 1, 0);
             ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
         } else if (bits & MQTT_PUBLISHED_BIT) {
             ESP_LOGI(TAG, "MQTT_PUBLISHED_BIT");

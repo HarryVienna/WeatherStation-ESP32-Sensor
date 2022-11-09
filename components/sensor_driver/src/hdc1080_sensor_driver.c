@@ -3,6 +3,8 @@
 #include <string.h>
 #include <sys/cdefs.h>
 
+#include "math.h"
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -17,172 +19,61 @@
 static const char *TAG = "hdc1080";
 
 
-void swap_bytes(void *pv, size_t n)
+void swap_bytes(uint16_t *pv)
 {
-    assert(n > 0);
-
-    char *p = pv;
-    size_t lo, hi;
-    for(lo=0, hi=n-1; hi>lo; lo++, hi--)
-    {
-        char tmp=p[lo];
-        p[lo] = p[hi];
-        p[hi] = tmp;
-    }
+    uint8_t *p = (uint8_t *)pv;
+    uint8_t tmp=p[0];
+    p[0] = p[1];
+    p[1] = tmp;
 }
 
-uint16_t byteswap(uint16_t a)
+float conv_temperature(uint16_t temperature)
 {
-  a = ((a & 0x00FF) << 8) | ((a & 0xFF00) >> 8);
-  return a;
+    return (temperature / pow(2, 16)) * 165.0 - 40.0;
 }
 
-
-esp_err_t hdc1080_i2c_write(uint8_t reg_addr, const uint8_t *reg_data, uint32_t cnt, uint8_t id)
+float conv_humidity(uint16_t humidity)
 {
-	esp_err_t err;
-
-	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-
-	err = i2c_master_start(cmd);
-    if (err != ESP_OK) {
-        goto end;
-    }	
-	
-	err = i2c_master_write_byte(cmd, (id << 1) | I2C_MASTER_WRITE, true);
-    if (err != ESP_OK) {
-        goto end;
-    }
-
-	err = i2c_master_write_byte(cmd, reg_addr, true);
-    if (err != ESP_OK) {
-        goto end;
-    }
-
-	err = i2c_master_write(cmd, reg_data, cnt, true);
-    if (err != ESP_OK) {
-        goto end;
-    }
-
-	err = i2c_master_stop(cmd);
-    if (err != ESP_OK) {
-        goto end;
-    }
-
-	err = i2c_master_cmd_begin(I2C_NUM_0, cmd, 10/portTICK_PERIOD_MS);
-    if (err != ESP_OK) {
-        goto end;
-    }
-
-end:	
-	i2c_cmd_link_delete(cmd);
-	return err;
+    return (humidity / pow(2, 16)) * 100;
 }
 
-
-
-esp_err_t hdc1080_i2c_write_(uint8_t reg_addr, uint16_t data, uint8_t id)
-{
-    int ret;
-    uint8_t write_buf[3] = {reg_addr, data};
-
-    ret = i2c_master_write_to_device(I2C_NUM_0, id, write_buf, sizeof(write_buf), 10);
-
-    return ret;
-}
-
-esp_err_t hdc1080_i2c_read(uint8_t reg_addr, uint8_t *reg_data, uint32_t cnt, uint8_t id)
-{
-	esp_err_t err;
- 
- 	i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-
-	err = i2c_master_start(cmd);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "i2c_master_start %d", err);
-        goto end;
-    }
-
-	err = i2c_master_write_byte(cmd, (id << 1) | I2C_MASTER_WRITE, true);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "i2c_master_write_byte %d", err);
-        goto end;
-    }
-
-	err = i2c_master_write_byte(cmd, reg_addr, true);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "i2c_master_write_byte %d", err);
-        goto end;
-    }
-
-	err = i2c_master_start(cmd);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "i2c_master_start %d", err);
-        goto end;
-    }
-
-	err = i2c_master_write_byte(cmd, (id << 1) | I2C_MASTER_READ, true);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "i2c_master_write_byte %d", err);
-        goto end;
-    }
-
-	err = i2c_master_read(cmd, reg_data, cnt, I2C_MASTER_LAST_NACK);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "i2c_master_read %d", err);
-        goto end;
-    }
-
-	err = i2c_master_stop(cmd);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "i2c_master_stop %d", err);
-        goto end;
-    }
-
-	err = i2c_master_cmd_begin(I2C_NUM_0, cmd, 10);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "i2c_master_cmd_begin %d", err);
-        goto end;
-    }
-
-end:	
-	i2c_cmd_link_delete(cmd);
-
-	return err;
-}
-
-esp_err_t hdc1080_i2c_read_(uint8_t reg_addr, uint8_t *reg_data, uint32_t cnt, uint8_t id)
-{
-    esp_err_t err = i2c_master_write_read_device(I2C_NUM_0, id, &reg_addr, 1, reg_data, 2, 10);
-
-    return err;
-}
-
-esp_err_t hdc1080_i2c_read_delay(uint8_t reg_addr, uint8_t *reg_data, uint32_t cnt, uint8_t id)
-{
-    esp_err_t err = i2c_master_write_to_device(I2C_NUM_0, id, &reg_addr, 1, 10);
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-    err = i2c_master_read_from_device(I2C_NUM_0, id, reg_data, cnt, 10);
-    //swap_bytes(reg_data, cnt);
-    return err;
-}
-
-esp_err_t hdc1080_get_regs(uint8_t reg_addr, uint8_t *reg_data, uint32_t len, uint8_t i2c_addr)
+esp_err_t get_temperature_humidity(uint8_t reg_addr, uint16_t *temperature, uint16_t *humidity, uint8_t i2c_addr, uint16_t delay)
 {
     esp_err_t rslt = ESP_OK;
 
-    rslt = hdc1080_i2c_read(reg_addr, reg_data, len, i2c_addr);
-    swap_bytes(reg_data, len);
+    uint16_t data[2];
+    rslt |= i2c_master_write_to_device(I2C_NUM_0, i2c_addr, &reg_addr, sizeof(uint8_t), DEVICE_TICKS_TO_WAIT);
+    
+    ets_delay_us(delay);
+    
+    rslt |= i2c_master_read_from_device(I2C_NUM_0, i2c_addr, (uint8_t *)&data, sizeof(data), DEVICE_TICKS_TO_WAIT);
+
+    swap_bytes(&data[0]);
+    swap_bytes(&data[1]);
+
+    *temperature = data[0];
+    *humidity = data[1];
 
     return rslt;
 }
 
-esp_err_t hdc1080_write_reg(uint8_t reg_addr, uint16_t reg_data,  uint8_t i2c_addr)
+esp_err_t get_register(uint8_t reg_addr, uint16_t *reg_data, uint8_t i2c_addr)
 {
     esp_err_t rslt = ESP_OK;
 
-    swap_bytes(&reg_data, 2);
-    rslt = hdc1080_i2c_write(reg_addr, (uint8_t *)&reg_data, 2, i2c_addr);
+    rslt = i2c_master_write_read_device(I2C_NUM_0, i2c_addr, &reg_addr, sizeof(uint8_t), (uint8_t *)reg_data, sizeof(uint16_t), DEVICE_TICKS_TO_WAIT);
+    swap_bytes(reg_data);
+
+    return rslt;
+}
+
+esp_err_t write_register(uint8_t reg_addr, uint16_t reg_data,  uint8_t i2c_addr)
+{
+    esp_err_t rslt = ESP_OK;
+
+    swap_bytes(&reg_data);
+    uint8_t write_buf[3] = {reg_addr, reg_data};
+    rslt = i2c_master_write_to_device(I2C_NUM_0, i2c_addr, write_buf, sizeof(write_buf), 10);
 
     return rslt;
 }
@@ -205,14 +96,14 @@ esp_err_t hdc1080_init_sensor(sensor_driver_t *handle)
     sensor_driver_hdc1080_t *hdc1080 = __containerof(handle, sensor_driver_hdc1080_t, parent);
     sensor_driver_hdc1080_conf_t hdc1080_config = hdc1080->driver_config;
 
-    vTaskDelay(DEVICE_STARTUP_TIME / portTICK_PERIOD_MS);
+    vTaskDelay(DEVICE_STARTUP_TIME_MS / portTICK_PERIOD_MS);
 
     uint16_t device_id = 0;
  
     uint8_t try_count = 5;
     while (try_count)
     {
-        ret = hdc1080_get_regs(REG_DEVICE_ID, (uint8_t*) &device_id, sizeof(device_id), hdc1080_config.i2c_addr);
+        ret = get_register(REG_DEVICE_ID, &device_id, hdc1080_config.i2c_addr);
 
         /* Check for chip id validity */
         if ((ret == ESP_OK) && (device_id == HDC1080_DEVICE_ID))
@@ -220,15 +111,15 @@ esp_err_t hdc1080_init_sensor(sensor_driver_t *handle)
             hdc1080->hdc1080_device.device_id = device_id;
 
             uint16_t manufacturer_id = 0;
-            hdc1080_get_regs(REG_MANUFACTURER_ID, (uint8_t*) &manufacturer_id, sizeof(manufacturer_id), hdc1080_config.i2c_addr);
+            get_register(REG_MANUFACTURER_ID, &manufacturer_id, hdc1080_config.i2c_addr);
             hdc1080->hdc1080_device.manufacturer_id = manufacturer_id;
 
             uint16_t serial_first = 0;
             uint16_t serial_mid = 0;
             uint16_t serial_last = 0;
-            hdc1080_get_regs(REG_SERIAL_ID_FIRST, (uint8_t*) &serial_first, sizeof(serial_first), hdc1080_config.i2c_addr);
-            hdc1080_get_regs(REG_SERIAL_ID_MID,   (uint8_t*) &serial_mid,   sizeof(serial_mid),   hdc1080_config.i2c_addr);
-            hdc1080_get_regs(REG_SERIAL_ID_LAST,  (uint8_t*) &serial_last,  sizeof(serial_last),  hdc1080_config.i2c_addr);
+            get_register(REG_SERIAL_ID_FIRST, &serial_first, hdc1080_config.i2c_addr);
+            get_register(REG_SERIAL_ID_MID,   &serial_mid,   hdc1080_config.i2c_addr);
+            get_register(REG_SERIAL_ID_LAST,  &serial_last,  hdc1080_config.i2c_addr);
             hdc1080_serial_t serial_id;
             serial_id.value = (uint64_t)serial_first<<32 | (uint64_t)serial_mid<<16 | (uint64_t)serial_last;
             hdc1080->hdc1080_device.serial_id = serial_id;
@@ -262,7 +153,7 @@ esp_err_t hdc1080_init_sensor(sensor_driver_t *handle)
             .temperature_resolution = hdc1080->driver_config.temperature_resolution,
         };
 
-        hdc1080_write_reg(REG_CONFIGURATION, config.value, hdc1080_config.i2c_addr);
+        write_register(REG_CONFIGURATION, config.value, hdc1080_config.i2c_addr);
     }
 
     return ret;
@@ -280,22 +171,14 @@ esp_err_t hdc1080_read_values(sensor_driver_t *handle, sensor_data_t *values)
     sensor_driver_hdc1080_t *hdc1080 = __containerof(handle, sensor_driver_hdc1080_t, parent);
     sensor_driver_hdc1080_conf_t hdc1080_config = hdc1080->driver_config;
 
-
-
-    uint8_t raw[4];
-    uint16_t result;
-    hdc1080_i2c_read_delay(REG_TEMPERATURE, (uint8_t*)&raw, 4, hdc1080->driver_config.i2c_addr);
-    ESP_LOGE(TAG, "REG_TEMPERATURE  %x %x %x %x", raw[0], raw[1], raw[2], raw[3]);
-
-    result = raw[0]<<8 | raw[1];
-    float temperature = RAW2TEMP(result);
-    result = raw[2]<<8 | raw[3];
-    float humidity = RAW2HUM(result);
-
-    ESP_LOGE(TAG, "temp  humidity %f %f", temperature, humidity);
+    uint16_t temperature;
+    uint16_t humidity;
+    ret = get_temperature_humidity(REG_TEMPERATURE, &temperature, &humidity, hdc1080_config.i2c_addr, 14000);
+   
+    values->temperature = conv_temperature(temperature);
+    values->humidity = conv_humidity(humidity);
 
     return ret;
-
 }
 
 
