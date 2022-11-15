@@ -24,15 +24,24 @@
 
 #define NO_OF_SAMPLES   16 
 
+#define SENSOR_NR_0 GPIO_NUM_25
+#define SENSOR_NR_1 GPIO_NUM_26
+
+#define VOLTAGE_ADC_CHANNEL ADC1_CHANNEL_7
 
 #define SDA_PIN GPIO_NUM_21
 #define SCL_PIN GPIO_NUM_22
 
 #define I2C_MASTER_FREQ_HZ 100000
 
+#define MQTT_MESSAGE "{ \"battery\": %d,  \"temperature\": %f,  \"humidity\": %f,  \"pressure\": %f }"
+#define MQTT_SUBJECT "/weatherstation/sensor/%02d"
+#define MQTT_SERVER  "mqtt://192.168.0.200"
 #define MQTT_CONNECTED_BIT BIT0
 #define MQTT_PUBLISHED_BIT BIT1
 #define MQTT_DISCONNECTED_BIT BIT2
+
+#define SENSOR_SLEEPTIME 600
 
 RTC_DATA_ATTR static int boot_count = 0;
 
@@ -75,17 +84,33 @@ esp_err_t blink() {
     return ESP_OK;
 }
 
-esp_err_t getVoltage(uint32_t *voltage) 
+esp_err_t get_sensor_number(uint32_t *nr) 
+{
+    gpio_set_direction(SENSOR_NR_0, GPIO_MODE_INPUT);   
+    gpio_set_direction(SENSOR_NR_1, GPIO_MODE_INPUT);  
+
+    gpio_set_pull_mode(SENSOR_NR_0, GPIO_PULLUP_PULLDOWN);
+    gpio_set_pull_mode(SENSOR_NR_1, GPIO_PULLUP_PULLDOWN);
+
+    int bit_0 = gpio_get_level(SENSOR_NR_0);
+    int bit_1 = gpio_get_level(SENSOR_NR_1);
+   
+    *nr = bit_1 << 1 | bit_0;
+
+    return ESP_OK;
+}
+
+esp_err_t get_voltage(uint32_t *voltage) 
 {
     esp_adc_cal_characteristics_t adc1_chars;
     
     esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_DEFAULT, ESP_ADC_CAL_VAL_EFUSE_VREF, &adc1_chars);
     adc1_config_width(ADC_WIDTH_BIT_DEFAULT);
-    adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_DB_11);
+    adc1_config_channel_atten(VOLTAGE_ADC_CHANNEL, ADC_ATTEN_DB_11);
 
     uint32_t adc_reading = 0;
     for (int i = 0; i < NO_OF_SAMPLES; i++) {
-        adc_reading += adc1_get_raw(ADC1_CHANNEL_7);
+        adc_reading += adc1_get_raw(VOLTAGE_ADC_CHANNEL);
     }
     adc_reading /= NO_OF_SAMPLES;
     ESP_LOGI(TAG, "raw  data: %d", adc_reading);
@@ -114,8 +139,14 @@ void app_main(){
 
     ret = blink();
 
+
+    uint32_t sensor_nr = 0;    
+    ret = get_sensor_number(&sensor_nr);
+    ESP_LOGI(TAG, "sensor: %d", sensor_nr);
+
+
     uint32_t voltage = 0;    
-    ret = getVoltage(&voltage);
+    ret = get_voltage(&voltage);
     ESP_LOGI(TAG, "voltage: %d", voltage);
 
 
@@ -132,7 +163,7 @@ void app_main(){
     i2c_init(&i2c_config);
 
 
-
+/*
     const sensor_driver_hdc1080_conf_t hdc1080_config = {
         .humidity_resolution = humidity_14bit,
         .temperature_resolution = temperature_11bit,
@@ -146,10 +177,9 @@ void app_main(){
     sensor_data_t values;
     sensor_driver_read_values(hdc1080_driver, &values);
 
-   ESP_LOGI(TAG, "%0.2f C / %.2f %%", values.temperature, values.humidity);
+*/
 
 
-/*
     const sensor_driver_bme280_conf_t bme280_config = {
         .osr_p = BME280_OVERSAMPLING_1X,
         .osr_t = BME280_OVERSAMPLING_1X,
@@ -164,10 +194,18 @@ void app_main(){
 
     sensor_data_t values;
     sensor_driver_read_values(bme280_driver, &values);
-*/
- 
+
+    ESP_LOGI(TAG, "%0.2f C / %.2f %%", values.temperature, values.humidity);
 
 
+
+
+    char message[128];
+    sprintf(message, MQTT_MESSAGE, voltage, values.temperature, values.humidity, values.pressure);
+    ESP_LOGI(TAG, "message %s", message);  
+    char subject[32];
+    sprintf(subject, MQTT_SUBJECT, sensor_nr);
+    ESP_LOGI(TAG, "subject %s", subject);  
 
 
     static wifi_conf_t wifi_conf = {
@@ -193,7 +231,7 @@ void app_main(){
     }
 
     static esp_mqtt_client_config_t mqtt_cfg = {
-        .uri  = "mqtt://192.168.0.200",
+        .uri  = MQTT_SERVER,
     };
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
     esp_mqtt_client_register_event(client, MQTT_EVENT_ANY, mqtt_event_handler, client);
@@ -208,11 +246,7 @@ void app_main(){
                 portMAX_DELAY);    
         if (bits & MQTT_CONNECTED_BIT) {
             ESP_LOGI(TAG, "MQTT_CONNECTED_BIT");    
-            char* json = "{  \"battery\": %d,  \"temperature\": %f,  \"humidity\": %f,  \"pressure\": %f}";
-            char message[128];
-            sprintf(message, json, voltage, values.temperature, values.humidity, values.pressure);
-            ESP_LOGI(TAG, "message %s", message);  
-            int msg_id = esp_mqtt_client_publish(client, "/weatherstation/balcony", message, 0, 1, 0);
+            int msg_id = esp_mqtt_client_publish(client, subject, message, 0, 1, 0);
             ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
         } else if (bits & MQTT_PUBLISHED_BIT) {
             ESP_LOGI(TAG, "MQTT_PUBLISHED_BIT");
@@ -220,12 +254,11 @@ void app_main(){
             ESP_LOGI(TAG, "disconnected");
         } else if (bits & MQTT_DISCONNECTED_BIT) {
             ESP_LOGI(TAG, "MQTT_DISCONNECTED_BIT");
-            const int deep_sleep_sec = 60 * 10;
-            ESP_LOGI(TAG, "Entering deep sleep for %d seconds", deep_sleep_sec);
+            ESP_LOGI(TAG, "Entering deep sleep for %d seconds", SENSOR_SLEEPTIME);
             gpio_set_level(GPIO_NUM_2, 1);
             smartconfig->stop(smartconfig);
             esp_sleep_pd_config(ESP_PD_DOMAIN_MAX, ESP_PD_OPTION_OFF);
-            esp_deep_sleep(1000000L * deep_sleep_sec);
+            esp_deep_sleep(1000000L * SENSOR_SLEEPTIME);
         } 
     } while (true);
 

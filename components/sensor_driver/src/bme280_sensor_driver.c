@@ -169,12 +169,7 @@ esp_err_t bme280_read_values(sensor_driver_t *handle, sensor_data_t *values)
 	ret = bme280_set_sensor_mode(BME280_FORCED_MODE, &bme280->bme280_device);
 
 	uint32_t delay = bme280_cal_meas_delay(&bme280->bme280_device.settings);
-	//if (delay < 10) {
-	//	delay = 10;
-	//}
-	ESP_LOGE(TAG, "delay: %d", delay);
 	bme280->bme280_device.delay_us(delay * 1000, bme280->bme280_device.intf_ptr);
-
 
 	struct bme280_data comp_data;
 
@@ -184,7 +179,6 @@ esp_err_t bme280_read_values(sensor_driver_t *handle, sensor_data_t *values)
 		values->temperature = comp_data.temperature;
 		values->pressure = comp_data.pressure / 100.0;
 		values->humidity = comp_data.humidity;
-		ESP_LOGI(TAG, "%0.2f degC / %.2f kPa / %.2f %%", comp_data.temperature, comp_data.pressure, comp_data.humidity);
 	} 	
 
     return ret;
