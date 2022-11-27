@@ -75,7 +75,8 @@
         "sensor_driver.h": "c",
         "sensor_driver_bme280.h": "c",
         "bme280_sensor_driver.h": "c",
-        "hdc1080_sensor_driver.h": "c"
+        "hdc1080_sensor_driver.h": "c",
+        "esp_event.h": "c"
     },
     "cmake.cmakePath": "c:\\Users\\Harald\\.platformio\\packages\\tool-cmake\\bin\\cmake.exe"
 }

@@ -163,7 +163,7 @@ void app_main(){
     i2c_init(&i2c_config);
 
 
-/*
+
     const sensor_driver_hdc1080_conf_t hdc1080_config = {
         .humidity_resolution = humidity_14bit,
         .temperature_resolution = temperature_11bit,
@@ -177,9 +177,10 @@ void app_main(){
     sensor_data_t values;
     sensor_driver_read_values(hdc1080_driver, &values);
 
-*/
+    ESP_LOGI(TAG, "%0.2f C / %.2f %%/ %.2f hPa", values.temperature, values.humidity, values.pressure);
 
 
+/*
     const sensor_driver_bme280_conf_t bme280_config = {
         .osr_p = BME280_OVERSAMPLING_1X,
         .osr_t = BME280_OVERSAMPLING_1X,
@@ -195,22 +196,23 @@ void app_main(){
     sensor_data_t values;
     sensor_driver_read_values(bme280_driver, &values);
 
-    ESP_LOGI(TAG, "%0.2f C / %.2f %%", values.temperature, values.humidity);
-
+    ESP_LOGI(TAG, "%0.2f C / %.2f %%/ %.2f hPa", values.temperature, values.humidity, , values.pressure);
+*/
 
 
 
     char message[128];
     sprintf(message, MQTT_MESSAGE, voltage, values.temperature, values.humidity, values.pressure);
     ESP_LOGI(TAG, "message %s", message);  
+
     char subject[32];
     sprintf(subject, MQTT_SUBJECT, sensor_nr);
     ESP_LOGI(TAG, "subject %s", subject);  
 
 
     static wifi_conf_t wifi_conf = {
-        .aes_key = "ESP32EXAMPLECODE",
-        .hostname = "ESP32",
+        .aes_key = "ESP32",
+        .hostname = "Sensor-ESP32",
         .ntp_server = "pool.ntp.org",
     };
     wifi_t *smartconfig = wifi_new_smartconfig(&wifi_conf);
@@ -223,6 +225,9 @@ void app_main(){
         while (ret != ESP_OK);
     }
 
+ 
+    int8_t signalstrength = smartconfig->get_signalstrength(smartconfig);
+    ESP_LOGE(TAG, "Signal strength: %d", signalstrength);
 
     // Create a new event group.
     s_mqtt_event_group = xEventGroupCreate();

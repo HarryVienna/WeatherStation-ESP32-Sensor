@@ -1,6 +1,7 @@
 #pragma once
 
 #include "esp_err.h"
+#include "esp_wifi.h"
 
 /**
 * @brief Wifi Type
@@ -30,6 +31,8 @@ struct wifi_s {
     esp_err_t (*init_sntp)(wifi_t *wifi);
 
     esp_err_t (*init_timezone)(wifi_t *wifi);
+
+    uint8_t (*get_signalstrength)(wifi_t *wifi);
     
 };
 

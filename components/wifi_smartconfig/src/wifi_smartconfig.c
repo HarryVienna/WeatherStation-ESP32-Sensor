@@ -8,7 +8,6 @@
 #include "freertos/event_groups.h"
 
 #include "esp_system.h"
-#include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_sntp.h"
@@ -386,6 +385,14 @@ static esp_err_t smartconfig_init_timezone(wifi_t *wifi)
     return ESP_OK;
 }
 
+static uint8_t smartconfig_get_signalstrength(wifi_t *wifi) {
+
+    wifi_ap_record_t ap_info;
+    esp_err_t err = esp_wifi_sta_get_ap_info(&ap_info);
+
+    return ap_info.rssi;
+}
+
 
 
 wifi_t *wifi_new_smartconfig(const wifi_conf_t *config)
@@ -402,6 +409,7 @@ wifi_t *wifi_new_smartconfig(const wifi_conf_t *config)
     smartconfig->parent.stop = smartconfig_stop;
     smartconfig->parent.init_sntp = smartconfig_init_sntp;
     smartconfig->parent.init_timezone = smartconfig_init_timezone;
+    smartconfig->parent.get_signalstrength = smartconfig_get_signalstrength;
 
 
     return &smartconfig->parent;
