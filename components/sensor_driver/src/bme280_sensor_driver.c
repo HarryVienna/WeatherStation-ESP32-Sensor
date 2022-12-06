@@ -99,7 +99,7 @@ int8_t bme280_i2c_read(uint8_t reg_addr, uint8_t *reg_data, uint32_t cnt, void *
         goto end;
     }
 
-	err = i2c_master_cmd_begin(I2C_NUM_0, cmd, 10/portTICK_PERIOD_MS);
+	err = i2c_master_cmd_begin(I2C_NUM_0, cmd, 50/portTICK_PERIOD_MS);
 
 end:	
 	i2c_cmd_link_delete(cmd);
@@ -114,9 +114,17 @@ void bme280_delay_us(uint32_t delay, void *intf_ptr)
 }
 
 
-// |================================================================================================ |
-// |                                           Initialisation                                        |
-// |================================================================================================ |
+esp_err_t bme280_check_sensor(uint8_t i2c_addr)
+{
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, (i2c_addr << 1) | I2C_MASTER_WRITE, true);
+    i2c_master_stop(cmd);
+    esp_err_t ret = i2c_master_cmd_begin(I2C_NUM_0, cmd, 50 / portTICK_PERIOD_MS);
+    i2c_cmd_link_delete(cmd);
+
+    return ret;
+}
 
 /**
  * @brief Init Stepper
@@ -129,7 +137,11 @@ esp_err_t bme280_init_sensor(sensor_driver_t *handle)
     sensor_driver_bme280_t *bme280 = __containerof(handle, sensor_driver_bme280_t, parent);
 
 	sensor_driver_bme280_conf_t bme280_config = bme280->driver_config;
-	//struct bme280_dev bme280_device = bme280->bme280_device;
+
+    ret = bme280_check_sensor(bme280_config.dev_id);
+    if (ret != ESP_OK) {
+        return ESP_FAIL;
+    }
 
 	bme280->bme280_device.intf = BME280_I2C_INTF;
 	bme280->bme280_device.write = bme280_i2c_write;

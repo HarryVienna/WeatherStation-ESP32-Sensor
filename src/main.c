@@ -164,8 +164,10 @@ void app_main(){
 
 
 
+   
+
     const sensor_driver_hdc1080_conf_t hdc1080_config = {
-        .humidity_resolution = humidity_14bit,
+        .humidity_resolution = humidity_11bit,
         .temperature_resolution = temperature_11bit,
         .i2c_addr = HDC1080_I2C_ADDR
     };
@@ -174,13 +176,14 @@ void app_main(){
 
     ret = sensor_driver_init_sensor(hdc1080_driver);
 
-    sensor_data_t values;
-    sensor_driver_read_values(hdc1080_driver, &values);
+    if (ret == ESP_OK) {
+        sensor_data_t values_hdc1080;
+        sensor_driver_read_values(hdc1080_driver, &values_hdc1080);
 
-    ESP_LOGI(TAG, "%0.2f C / %.2f %%/ %.2f hPa", values.temperature, values.humidity, values.pressure);
+        ESP_LOGI(TAG, "hdc1080 %0.2f C / %.2f %%/ %.2f hPa", values_hdc1080.temperature, values_hdc1080.humidity, values_hdc1080.pressure);
+    }
 
 
-/*
     const sensor_driver_bme280_conf_t bme280_config = {
         .osr_p = BME280_OVERSAMPLING_1X,
         .osr_t = BME280_OVERSAMPLING_1X,
@@ -193,16 +196,17 @@ void app_main(){
 
     ret = sensor_driver_init_sensor(bme280_driver);
 
-    sensor_data_t values;
-    sensor_driver_read_values(bme280_driver, &values);
+    if (ret == ESP_OK) {
+        sensor_data_t values_bme280;
+        sensor_driver_read_values(bme280_driver, &values_bme280);
 
-    ESP_LOGI(TAG, "%0.2f C / %.2f %%/ %.2f hPa", values.temperature, values.humidity, , values.pressure);
-*/
+        ESP_LOGI(TAG, "bme280 %0.2f C / %.2f %%/ %.2f hPa", values_bme280.temperature, values_bme280.humidity, values_bme280.pressure);
+    }
 
 
 
     char message[128];
-    sprintf(message, MQTT_MESSAGE, voltage, values.temperature, values.humidity, values.pressure);
+    //sprintf(message, MQTT_MESSAGE, voltage, values_bme280.temperature, values_bme280.humidity, values_bme280.pressure);
     ESP_LOGI(TAG, "message %s", message);  
 
     char subject[32];
@@ -211,7 +215,7 @@ void app_main(){
 
 
     static wifi_conf_t wifi_conf = {
-        .aes_key = "ESP32",
+        .aes_key = "myWeatherstation",
         .hostname = "Sensor-ESP32",
         .ntp_server = "pool.ntp.org",
     };
