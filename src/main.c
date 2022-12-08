@@ -34,7 +34,7 @@
 
 #define I2C_MASTER_FREQ_HZ 100000
 
-#define MQTT_MESSAGE "{ \"battery\": %d,  \"temperature\": %f,  \"humidity\": %f,  \"pressure\": %f }"
+#define MQTT_MESSAGE "{ \"battery\": %d,  \"wifi\": %d,  \"sensors\": { %s } }"
 #define MQTT_SUBJECT "/weatherstation/sensor/%02d"
 #define MQTT_SERVER  "mqtt://192.168.0.200"
 #define MQTT_CONNECTED_BIT BIT0
@@ -139,18 +139,18 @@ void app_main(){
 
     ret = blink();
 
-
+    // ------- Read DIP switch value -------
     uint32_t sensor_nr = 0;    
     ret = get_sensor_number(&sensor_nr);
     ESP_LOGI(TAG, "sensor: %d", sensor_nr);
 
-
+    // ------- Read voltage value -------
     uint32_t voltage = 0;    
     ret = get_voltage(&voltage);
     ESP_LOGI(TAG, "voltage: %d", voltage);
 
 
-
+    // ------- Read sensors -------
 	i2c_config_t i2c_config = {
 		.mode = I2C_MODE_MASTER,
 		.sda_io_num = SDA_PIN,
@@ -162,10 +162,9 @@ void app_main(){
 
     i2c_init(&i2c_config);
 
-
-
+    char sensor_json[512] = "";
    
-
+    // ------- Read HDC1080 if available -----
     const sensor_driver_hdc1080_conf_t hdc1080_config = {
         .humidity_resolution = humidity_11bit,
         .temperature_resolution = temperature_11bit,
@@ -177,13 +176,17 @@ void app_main(){
     ret = sensor_driver_init_sensor(hdc1080_driver);
 
     if (ret == ESP_OK) {
-        sensor_data_t values_hdc1080;
-        sensor_driver_read_values(hdc1080_driver, &values_hdc1080);
+        sensor_data_t hdc1080_values;
+        sensor_driver_read_values(hdc1080_driver, &hdc1080_values);
+        char hdc1080_json[128];
+        sensor_driver_get_json(hdc1080_driver, hdc1080_values, hdc1080_json);
 
-        ESP_LOGI(TAG, "hdc1080 %0.2f C / %.2f %%/ %.2f hPa", values_hdc1080.temperature, values_hdc1080.humidity, values_hdc1080.pressure);
+        strcat(sensor_json, hdc1080_json);
+
+        ESP_LOGI(TAG, "hdc1080 %0.2f C / %.2f %%", hdc1080_values.temperature, hdc1080_values.humidity);
     }
 
-
+    // ------- Read BME280 if available -----
     const sensor_driver_bme280_conf_t bme280_config = {
         .osr_p = BME280_OVERSAMPLING_1X,
         .osr_t = BME280_OVERSAMPLING_1X,
@@ -199,21 +202,17 @@ void app_main(){
     if (ret == ESP_OK) {
         sensor_data_t values_bme280;
         sensor_driver_read_values(bme280_driver, &values_bme280);
+        char bme280_json[128];
+        sensor_driver_get_json(bme280_driver, values_bme280, bme280_json);
 
-        ESP_LOGI(TAG, "bme280 %0.2f C / %.2f %%/ %.2f hPa", values_bme280.temperature, values_bme280.humidity, values_bme280.pressure);
+        strcat(sensor_json, bme280_json);
+
+        ESP_LOGI(TAG, "bme280 %0.2f C / %.2f %% / %.2f hPa", values_bme280.temperature, values_bme280.humidity, values_bme280.pressure);
     }
+    sensor_json[strlen(sensor_json)-1] = '\0'; // remove last colon
 
 
-
-    char message[128];
-    //sprintf(message, MQTT_MESSAGE, voltage, values_bme280.temperature, values_bme280.humidity, values_bme280.pressure);
-    ESP_LOGI(TAG, "message %s", message);  
-
-    char subject[32];
-    sprintf(subject, MQTT_SUBJECT, sensor_nr);
-    ESP_LOGI(TAG, "subject %s", subject);  
-
-
+    // ------- Start Wi-Fi -----
     static wifi_conf_t wifi_conf = {
         .aes_key = "myWeatherstation",
         .hostname = "Sensor-ESP32",
@@ -229,10 +228,11 @@ void app_main(){
         while (ret != ESP_OK);
     }
 
- 
+    // ------- Read signal strength -----
     int8_t signalstrength = smartconfig->get_signalstrength(smartconfig);
     ESP_LOGE(TAG, "Signal strength: %d", signalstrength);
 
+    // 
     // Create a new event group.
     s_mqtt_event_group = xEventGroupCreate();
     if (s_mqtt_event_group == NULL) {
@@ -254,7 +254,16 @@ void app_main(){
                 pdFALSE,
                 portMAX_DELAY);    
         if (bits & MQTT_CONNECTED_BIT) {
-            ESP_LOGI(TAG, "MQTT_CONNECTED_BIT");    
+            ESP_LOGI(TAG, "MQTT_CONNECTED_BIT, sending message");    
+
+            char subject[32];
+            sprintf(subject, MQTT_SUBJECT, sensor_nr);
+            ESP_LOGI(TAG, "subject %s", subject);  
+
+            char message[1024];
+            sprintf(message, MQTT_MESSAGE, voltage, signalstrength, sensor_json);
+            ESP_LOGI(TAG, "message %s", message);  
+
             int msg_id = esp_mqtt_client_publish(client, subject, message, 0, 1, 0);
             ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
         } else if (bits & MQTT_PUBLISHED_BIT) {
@@ -262,9 +271,7 @@ void app_main(){
             esp_mqtt_client_disconnect(client);
             ESP_LOGI(TAG, "disconnected");
         } else if (bits & MQTT_DISCONNECTED_BIT) {
-            ESP_LOGI(TAG, "MQTT_DISCONNECTED_BIT");
-            ESP_LOGI(TAG, "Entering deep sleep for %d seconds", SENSOR_SLEEPTIME);
-            gpio_set_level(GPIO_NUM_2, 1);
+            ESP_LOGI(TAG, "MQTT_DISCONNECTED_BIT, entering deep sleep for %d seconds", SENSOR_SLEEPTIME);
             smartconfig->stop(smartconfig);
             esp_sleep_pd_config(ESP_PD_DOMAIN_MAX, ESP_PD_OPTION_OFF);
             esp_deep_sleep(1000000L * SENSOR_SLEEPTIME);

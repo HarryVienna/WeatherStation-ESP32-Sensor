@@ -10,6 +10,8 @@
 
 #include "bme280_sensor_driver.h"
 
+#define BME280_MQTT_MESSAGE " \"bme280\": { \"temperature\": %f, \"humidity\": %f, \"pressure\": %f },"
+
 static const char *TAG = "bme280";
 
 
@@ -172,11 +174,9 @@ esp_err_t bme280_init_sensor(sensor_driver_t *handle)
 esp_err_t bme280_read_values(sensor_driver_t *handle, sensor_data_t *values)
 {
     esp_err_t ret = ESP_OK;
+
 	sensor_driver_bme280_t *bme280 = __containerof(handle, sensor_driver_bme280_t, parent);
-
 	sensor_driver_bme280_conf_t bme280_config = bme280->driver_config;
-	//struct bme280_dev bme280_device = bme280->bme280_device;
-
 
 	ret = bme280_set_sensor_mode(BME280_FORCED_MODE, &bme280->bme280_device);
 
@@ -196,6 +196,17 @@ esp_err_t bme280_read_values(sensor_driver_t *handle, sensor_data_t *values)
     return ret;
 }
 
+/**
+ * @brief Get JSON value
+ *
+ * @param handle handle to sensor_driver_t type object
+ */
+void bme280_get_json(sensor_driver_t *handle, sensor_data_t values, char* message)
+{
+    sprintf(message, BME280_MQTT_MESSAGE, values.temperature, values.humidity, values.pressure);
+
+    ESP_LOGI(TAG, "JSON %s", message); 
+}
 
 sensor_driver_t *sensor_driver_new_bme280(const sensor_driver_bme280_conf_t *config)
 {
@@ -209,6 +220,7 @@ sensor_driver_t *sensor_driver_new_bme280(const sensor_driver_bme280_conf_t *con
 
     bme280->parent.init_sensor = bme280_init_sensor;
     bme280->parent.read_values= bme280_read_values;
+    bme280->parent.get_json= bme280_get_json;
 
     return &bme280->parent;
 }

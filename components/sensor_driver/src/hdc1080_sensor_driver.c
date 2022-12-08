@@ -12,6 +12,7 @@
 
 #include "hdc1080_sensor_driver.h"
 
+#define HDC1080_MQTT_MESSAGE " \"hdc1080\": {\"temperature\": %f, \"humidity\": %f },"
 
 #define RAW2HUM(raw) (((float)raw) * 100/65536)
 #define RAW2TEMP(raw) (((float)raw) * 165/65536 - 40)
@@ -193,6 +194,17 @@ esp_err_t hdc1080_read_values(sensor_driver_t *handle, sensor_data_t *values)
     return ret;
 }
 
+/**
+ * @brief Get JSON value
+ *
+ * @param handle handle to sensor_driver_t type object
+ */
+void hdc1080_get_json(sensor_driver_t *handle, sensor_data_t values, char* message)
+{
+    sprintf(message, HDC1080_MQTT_MESSAGE, values.temperature, values.humidity);
+
+    ESP_LOGI(TAG, "JSON %s", message);  
+}
 
 sensor_driver_t *sensor_driver_new_hdc1080(const sensor_driver_hdc1080_conf_t *config)
 {
@@ -204,6 +216,7 @@ sensor_driver_t *sensor_driver_new_hdc1080(const sensor_driver_hdc1080_conf_t *c
 
     hdc1080->parent.init_sensor = hdc1080_init_sensor;
     hdc1080->parent.read_values= hdc1080_read_values;
+    hdc1080->parent.get_json= hdc1080_get_json;
 
     return &hdc1080->parent;
 }
