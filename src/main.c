@@ -230,7 +230,7 @@ void app_main(){
 
     // ------- Read signal strength -----
     int8_t signalstrength = smartconfig->get_signalstrength(smartconfig);
-    ESP_LOGE(TAG, "Signal strength: %d", signalstrength);
+    ESP_LOGI(TAG, "Signal strength: %d", signalstrength);
 
     // 
     // Create a new event group.
