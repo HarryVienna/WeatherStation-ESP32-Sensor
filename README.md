@@ -1,4 +1,4 @@
-# ESP32 SmartConfig Wi-Fi IoT component
+# ESP32 weatherstation sensor
 
 ESP32 (FireBeetle 2) based sensor for the weatherstation. It uses a BME280 for measuring temperature, pressure and humidity
 
