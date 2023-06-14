@@ -146,85 +146,89 @@ static esp_err_t smartconfig_connect(wifi_t *wifi)
         ESP_LOGE(TAG, "Failed to get config");
         return ESP_FAIL;
     }
+
     if(strlen((const char*) wifi_config.sta.ssid)){
+        /* -------------- Try to connect with stored settings ------------- */
+
         ESP_LOGI(TAG, "Flash SSID: %s", wifi_config.sta.ssid);
         ESP_LOGI(TAG, "Flash Password: %s", wifi_config.sta.password);
-    }
-    else {
-        ESP_LOGE(TAG, "Nothing in flash");
-    }
-    
-    
-    /* -------------- Try to connect with stored settings ------------- */
-    s_retry_num = 0;
 
-    if (esp_wifi_start() != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start wifi");
-        return ESP_FAIL;       
-    }
+        s_retry_num = 0;
 
-    ESP_LOGI(TAG, "WIFI startet. Waiting for events.");
+        if (esp_wifi_start() != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to start wifi");
+            return ESP_FAIL;       
+        }
 
-    /* Waiting until either the connection is established (WIFI_CONNECTED_BIT) or connection failed for the maximum
-     * number of re-tries (WIFI_FAIL_BIT). The bits are set by event_handler() (see above) */
-    bits = xEventGroupWaitBits(s_wifi_event_group,
-            WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-            pdTRUE,
-            pdFALSE,
-            portMAX_DELAY);
+        ESP_LOGI(TAG, "WIFI startet. Waiting for events.");
 
-    if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG, "Connected to ap SSID: %s password: %s", wifi_config.sta.ssid, wifi_config.sta.password);
-        return ESP_OK;
-    } else if (bits & WIFI_FAIL_BIT) {
-        ESP_LOGI(TAG, "Failed to connect to SSID: %s, password:%s", wifi_config.sta.ssid, wifi_config.sta.password);
-    } else {
-        ESP_LOGE(TAG, "Unexpected event");
-    }
-
-    /* -------------- Try to connect with smartconfig ------------- */
-    s_retry_num = 0;
-
-    if (esp_smartconfig_set_type(SC_TYPE_ESPTOUCH_V2) != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to set smartconfig type");
-        return ESP_FAIL;      
-    }
-    smartconfig_start_config_t smart_cfg;
-    smart_cfg.enable_log = false;
-    smart_cfg.esp_touch_v2_enable_crypt = true;
-    smart_cfg.esp_touch_v2_key = smartconfig->config.aes_key;
-    
-    if (esp_smartconfig_start(&smart_cfg) != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start smartconfig");
-        return ESP_FAIL;   
-    }
-
-    do {
+        /* Waiting until either the connection is established (WIFI_CONNECTED_BIT) or connection failed for the maximum
+        * number of re-tries (WIFI_FAIL_BIT). The bits are set by event_handler() (see above) */
         bits = xEventGroupWaitBits(s_wifi_event_group,
-                WIFI_CONNECTED_BIT | WIFI_FAIL_BIT | ESPTOUCH_DONE_BIT,
+                WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
                 pdTRUE,
                 pdFALSE,
                 portMAX_DELAY);
 
         if (bits & WIFI_CONNECTED_BIT) {
-            ESP_LOGI(TAG, "connected via smart config");
-        } else if (bits & ESPTOUCH_DONE_BIT) {
-            ESP_LOGI(TAG, "Touch done");
-            esp_smartconfig_stop();
+            ESP_LOGI(TAG, "Connected to ap SSID: %s password: %s", wifi_config.sta.ssid, wifi_config.sta.password);
             return ESP_OK;
         } else if (bits & WIFI_FAIL_BIT) {
-            ESP_LOGI(TAG, "Failed to connect via smart config");
-            esp_smartconfig_stop();
-            esp_wifi_stop();
-            return ESP_FAIL;
+            ESP_LOGI(TAG, "Failed to connect to SSID: %s, password:%s", wifi_config.sta.ssid, wifi_config.sta.password);
         } else {
             ESP_LOGE(TAG, "Unexpected event");
-            esp_smartconfig_stop();
-            esp_wifi_stop();
             return ESP_FAIL;
         }
-    } while (true);
+    }
+    else {
+        ESP_LOGE(TAG, "Nothing in flash");
 
+        /* -------------- Try to connect with smartconfig ------------- */
+        s_retry_num = 0;
+
+        if (esp_wifi_start() != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to start wifi");
+            return ESP_FAIL;       
+        }
+
+        if (esp_smartconfig_set_type(SC_TYPE_ESPTOUCH_V2) != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to set smartconfig type");
+            return ESP_FAIL;      
+        }
+        smartconfig_start_config_t smart_cfg;
+        smart_cfg.enable_log = false;
+        smart_cfg.esp_touch_v2_enable_crypt = true;
+        smart_cfg.esp_touch_v2_key = smartconfig->config.aes_key;
+        
+        if (esp_smartconfig_start(&smart_cfg) != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to start smartconfig");
+            return ESP_FAIL;   
+        }
+
+        do {
+            bits = xEventGroupWaitBits(s_wifi_event_group,
+                    WIFI_CONNECTED_BIT  | ESPTOUCH_DONE_BIT,
+                    pdTRUE,
+                    pdFALSE,
+                    portMAX_DELAY);
+
+            if (bits & WIFI_CONNECTED_BIT) {
+                ESP_LOGI(TAG, "connected via smart config");
+            } else if (bits & ESPTOUCH_DONE_BIT) {
+                ESP_LOGI(TAG, "Touch done");
+                esp_smartconfig_stop();
+                return ESP_OK;
+            } else {
+                ESP_LOGE(TAG, "Unexpected event");
+                esp_smartconfig_stop();
+                esp_wifi_stop();
+                return ESP_FAIL;
+            }
+        } while (true);
+  
+    }
+
+    return ESP_FAIL;
 }
 
 static esp_err_t smartconfig_start(wifi_t *wifi)
@@ -264,6 +268,7 @@ static void connect_event_handler(void* arg, esp_event_base_t event_base, int32_
         ESP_LOGI(TAG,"WIFI_EVENT_STA_DISCONNECTED");
         if (s_retry_num < MAXIMUM_RETRY) {
             ESP_LOGI(TAG, "retry to connect to the AP");
+            vTaskDelay(pdMS_TO_TICKS(10000));
             esp_wifi_connect();
             s_retry_num++;
             
