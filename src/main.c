@@ -58,8 +58,8 @@ static xQueueHandle s_espnow_queue;
 static EventGroupHandle_t s_espnow_event_group;
 
 typedef struct struct_data {
-    uint8_t msgType;
-    uint8_t sensor_nr;    
+    uint8_t msg_type;
+    uint8_t sensor_nr;
     uint32_t voltage;
     double pressure;
     double temperature;
@@ -67,14 +67,14 @@ typedef struct struct_data {
 } struct_data;
 
 typedef struct struct_pairing_response { 
-    uint8_t msgType;
+    uint8_t msg_type;
     uint8_t sensor_nr;    
     uint8_t macAddr[ESP_NOW_ETH_ALEN];
     uint8_t channel;
 } struct_pairing_response;
 
 typedef struct struct_pairing_request { 
-    uint8_t msgType;
+    uint8_t msg_type;
     uint8_t sensor_nr;    
 } struct_pairing_request;
 
@@ -412,7 +412,7 @@ esp_err_t start_pairing(uint8_t *mac_addr, uint8_t *chan, uint8_t sensor_nr)
     struct_pairing_request pair_req;
     struct_pairing_response pair_resp;
 
-    pair_req.msgType = PAIRING_REQ; 
+    pair_req.msg_type = PAIRING_REQ; 
     pair_req.sensor_nr = sensor_nr;
 
     for (int channel = 1; channel <= MAX_CHANNEL; channel++) {
@@ -550,7 +550,7 @@ void app_main(){
 
     // Create message to send
     struct_data msg;
-    msg.msgType = DATA;
+    msg.msg_type = DATA;
     msg.sensor_nr = sensor_nr;
     msg.voltage = voltage;
     msg.temperature = values_bme280.temperature;
