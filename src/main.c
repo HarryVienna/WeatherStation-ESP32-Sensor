@@ -7,6 +7,7 @@
 #include "driver/gpio.h"
 #include "driver/adc.h"
 #include "driver/i2c.h"
+#include "driver/rtc_io.h"
 #include "esp_adc_cal.h"
 #include "esp_sleep.h"
 #include "esp_log.h"
@@ -29,6 +30,8 @@
 #define MAX_CHANNEL 13 
 
 #define NO_OF_SAMPLES 16 
+
+#define LED GPIO_NUM_2
 
 #define SENSOR_NR_2 GPIO_NUM_25
 #define SENSOR_NR_1 GPIO_NUM_33
@@ -87,11 +90,11 @@ typedef struct struct_pairing_request {
 * @note This function assumes that an LED is connected to GPIO pin GPIO_NUM_2.
 */
 static void blink() {
-    gpio_pad_select_gpio(GPIO_NUM_2);
-    gpio_set_direction(GPIO_NUM_2, GPIO_MODE_OUTPUT);
-    gpio_set_level(GPIO_NUM_2, 1);
+    gpio_pad_select_gpio(LED);
+    gpio_set_direction(LED, GPIO_MODE_OUTPUT);
+    gpio_set_level(LED, 1);
     vTaskDelay(50 / portTICK_PERIOD_MS);
-    gpio_set_level(GPIO_NUM_2, 0);
+    gpio_set_level(LED, 0);
 }
 
 /**
@@ -456,6 +459,22 @@ void start_deep_sleep()
 {
     ESP_LOGI(TAG, "Start Deep Sleep");
     esp_sleep_pd_config(ESP_PD_DOMAIN_MAX, ESP_PD_OPTION_OFF);
+
+    // https://electronics.stackexchange.com/questions/530151/esp32-wroom32-consuming-77-%c2%b5a-much-too-high-in-deep-sleep
+    gpio_reset_pin(SENSOR_NR_0);
+    gpio_reset_pin(SENSOR_NR_1);
+    gpio_reset_pin(SENSOR_NR_2);
+
+
+    // https://www.esp32.com/viewtopic.php?t=3634
+    // gpio_pad_select_gpio(GPIO_NUM_32);
+    // gpio_set_direction(GPIO_NUM_32, GPIO_MODE_INPUT);
+    // gpio_set_pull_mode(GPIO_NUM_32, GPIO_PULLUP_ONLY);
+
+    // gpio_pad_select_gpio(GPIO_NUM_33);
+    // gpio_set_direction(GPIO_NUM_33, GPIO_MODE_INPUT);
+    // gpio_set_pull_mode(GPIO_NUM_33, GPIO_PULLUP_ONLY);
+
     esp_deep_sleep(1000000L * SENSOR_SLEEPTIME);
 }
 
