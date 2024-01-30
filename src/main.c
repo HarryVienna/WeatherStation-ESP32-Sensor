@@ -17,6 +17,8 @@
 
 #include "bme280_sensor_driver.h"
 
+#undef SENSOR_DFROBOT // Set this for the old board with FireBeetle 2 ESP32 Microcontroller 
+
 
 #define NVS_NAMESPACE "SENSOR"
 #define MAC_VALUE "MAC"
@@ -33,9 +35,15 @@
 
 #define LED GPIO_NUM_2
 
-#define SENSOR_NR_2 GPIO_NUM_25
-#define SENSOR_NR_1 GPIO_NUM_33
-#define SENSOR_NR_0 GPIO_NUM_32
+
+#ifdef SENSOR_DFROBOT
+    #define SENSOR_NR_0 GPIO_NUM_25
+    #define SENSOR_NR_1 GPIO_NUM_26
+#else
+    #define SENSOR_NR_2 GPIO_NUM_25
+    #define SENSOR_NR_1 GPIO_NUM_33
+    #define SENSOR_NR_0 GPIO_NUM_32
+#endif
 
 #define VOLTAGE_ADC_CHANNEL ADC1_CHANNEL_7
 
@@ -112,19 +120,32 @@ static void blink() {
 */
 static esp_err_t get_sensor_number(uint8_t *nr) 
 {
-    gpio_set_direction(SENSOR_NR_0, GPIO_MODE_INPUT);   
-    gpio_set_direction(SENSOR_NR_1, GPIO_MODE_INPUT);  
-    gpio_set_direction(SENSOR_NR_2, GPIO_MODE_INPUT);  
+    #ifdef SENSOR_DFROBOT
+        gpio_set_direction(SENSOR_NR_0, GPIO_MODE_INPUT);   
+        gpio_set_direction(SENSOR_NR_1, GPIO_MODE_INPUT);  
 
-    gpio_set_pull_mode(SENSOR_NR_0, GPIO_PULLUP_PULLDOWN);
-    gpio_set_pull_mode(SENSOR_NR_1, GPIO_PULLUP_PULLDOWN);
-    gpio_set_pull_mode(SENSOR_NR_2, GPIO_PULLUP_PULLDOWN);
+        gpio_set_pull_mode(SENSOR_NR_0, GPIO_PULLUP_PULLDOWN);
+        gpio_set_pull_mode(SENSOR_NR_1, GPIO_PULLUP_PULLDOWN);
 
-    int bit_0 = gpio_get_level(SENSOR_NR_0);
-    int bit_1 = gpio_get_level(SENSOR_NR_1);
-    int bit_2 = gpio_get_level(SENSOR_NR_2);
-   
-    *nr = bit_2 << 2 | bit_1 << 1 | bit_0;
+        int bit_0 = gpio_get_level(SENSOR_NR_0);
+        int bit_1 = gpio_get_level(SENSOR_NR_1);
+    
+        *nr = bit_1 << 1 | bit_0;
+    #else
+        gpio_set_direction(SENSOR_NR_0, GPIO_MODE_INPUT);   
+        gpio_set_direction(SENSOR_NR_1, GPIO_MODE_INPUT);  
+        gpio_set_direction(SENSOR_NR_2, GPIO_MODE_INPUT);  
+
+        gpio_set_pull_mode(SENSOR_NR_0, GPIO_PULLUP_PULLDOWN);
+        gpio_set_pull_mode(SENSOR_NR_1, GPIO_PULLUP_PULLDOWN);
+        gpio_set_pull_mode(SENSOR_NR_2, GPIO_PULLUP_PULLDOWN);
+
+        int bit_0 = gpio_get_level(SENSOR_NR_0);
+        int bit_1 = gpio_get_level(SENSOR_NR_1);
+        int bit_2 = gpio_get_level(SENSOR_NR_2);
+    
+        *nr = bit_2 << 2 | bit_1 << 1 | bit_0;
+    #endif
 
     return ESP_OK;
 }
@@ -154,8 +175,12 @@ static esp_err_t get_voltage(uint32_t *voltage)
     }
     adc_reading /= NO_OF_SAMPLES;
     ESP_LOGI(TAG, "raw  data: %d", adc_reading);
-    //*voltage = esp_adc_cal_raw_to_voltage(adc_reading, &adc1_chars) * 2; // Voltage divider is 1:1   // Altes Board
-    *voltage = esp_adc_cal_raw_to_voltage(adc_reading, &adc1_chars) * ((4.7 + 2.2) / 4.7); // Voltage divider is 2.2 : 4.7
+
+    #ifdef SENSOR_DFROBOT
+        *voltage = esp_adc_cal_raw_to_voltage(adc_reading, &adc1_chars) * 2; // Voltage divider is 1:1   // Altes Board
+    #else
+        *voltage = esp_adc_cal_raw_to_voltage(adc_reading, &adc1_chars) * ((4.7 + 2.2) / 4.7); // Voltage divider is 2.2 : 4.7
+    #endif
 
     return ESP_OK;
 }
@@ -461,10 +486,14 @@ void start_deep_sleep()
     esp_sleep_pd_config(ESP_PD_DOMAIN_MAX, ESP_PD_OPTION_OFF);
 
     // https://electronics.stackexchange.com/questions/530151/esp32-wroom32-consuming-77-%c2%b5a-much-too-high-in-deep-sleep
-    gpio_reset_pin(SENSOR_NR_0);
-    gpio_reset_pin(SENSOR_NR_1);
-    gpio_reset_pin(SENSOR_NR_2);
-
+    #ifdef SENSOR_DFROBOT
+        gpio_reset_pin(SENSOR_NR_0);
+        gpio_reset_pin(SENSOR_NR_1);
+    #else
+        gpio_reset_pin(SENSOR_NR_0);
+        gpio_reset_pin(SENSOR_NR_1);
+        gpio_reset_pin(SENSOR_NR_2);
+    #endif
 
     // https://www.esp32.com/viewtopic.php?t=3634
     // gpio_pad_select_gpio(GPIO_NUM_32);
