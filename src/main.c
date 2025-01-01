@@ -4,11 +4,15 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
+
 #include "driver/gpio.h"
-#include "driver/adc.h"
 #include "driver/i2c.h"
 #include "driver/rtc_io.h"
-#include "esp_adc_cal.h"
+
+#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
+
 #include "esp_sleep.h"
 #include "esp_log.h"
 #include "esp_now.h"
@@ -45,7 +49,9 @@
     #define SENSOR_NR_0 GPIO_NUM_32
 #endif
 
-#define VOLTAGE_ADC_CHANNEL ADC1_CHANNEL_7
+#define ADC_CHANNEL ADC_CHANNEL_7
+#define ADC_UNIT ADC_UNIT_1
+#define ADC_ATTEN ADC_ATTEN_DB_12
 
 #define SDA_PIN GPIO_NUM_21
 #define SCL_PIN GPIO_NUM_22
@@ -65,7 +71,7 @@ static const char* TAG = "main";
 
 static uint8_t s_broadcast_mac[ESP_NOW_ETH_ALEN] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 
-static xQueueHandle s_espnow_queue;
+static QueueHandle_t s_espnow_queue;
 static EventGroupHandle_t s_espnow_event_group;
 
 typedef struct struct_data {
@@ -98,11 +104,13 @@ typedef struct struct_pairing_request {
 * @note This function assumes that an LED is connected to GPIO pin GPIO_NUM_2.
 */
 static void blink() {
-    gpio_pad_select_gpio(LED);
+    gpio_reset_pin(LED);
+    gpio_set_pull_mode(LED, GPIO_PULLDOWN_ONLY);
     gpio_set_direction(LED, GPIO_MODE_OUTPUT);
     gpio_set_level(LED, 1);
     vTaskDelay(50 / portTICK_PERIOD_MS);
     gpio_set_level(LED, 0);
+    gpio_set_direction(LED, GPIO_MODE_INPUT);
 }
 
 /**
@@ -163,24 +171,41 @@ static esp_err_t get_sensor_number(uint8_t *nr)
 */
 static esp_err_t get_voltage(uint32_t *voltage) 
 {
-    esp_adc_cal_characteristics_t adc1_chars;
-    
-    esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_DEFAULT, ESP_ADC_CAL_VAL_EFUSE_VREF, &adc1_chars);
-    adc1_config_width(ADC_WIDTH_BIT_DEFAULT);
-    adc1_config_channel_atten(VOLTAGE_ADC_CHANNEL, ADC_ATTEN_DB_11);
+    static int adc_raw;
 
-    uint32_t adc_reading = 0;
-    for (int i = 0; i < NO_OF_SAMPLES; i++) {
-        adc_reading += adc1_get_raw(VOLTAGE_ADC_CHANNEL);
-    }
-    adc_reading /= NO_OF_SAMPLES;
-    ESP_LOGI(TAG, "raw  data: %d", adc_reading);
+    adc_oneshot_unit_handle_t adc1_handle;
+    adc_oneshot_unit_init_cfg_t init_config1 = {
+        .unit_id = ADC_UNIT,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config1, &adc1_handle));
+
+    adc_oneshot_chan_cfg_t config = {
+        .atten = ADC_ATTEN,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, ADC_CHANNEL, &config));
+
+    adc_cali_handle_t adc1_cali_chan0_handle = NULL;
+
+    adc_cali_line_fitting_config_t cali_config = {
+        .unit_id = ADC_UNIT,
+        .atten = ADC_ATTEN,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    ESP_ERROR_CHECK(adc_cali_create_scheme_line_fitting(&cali_config, &adc1_cali_chan0_handle));
+
+    ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, ADC_CHANNEL, &adc_raw));
+    ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT + 1, ADC_CHANNEL, adc_raw);
+  
+    ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw, (int*)voltage));
+    ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %lu mV", ADC_UNIT + 1, ADC_CHANNEL, *voltage);
 
     #ifdef SENSOR_DFROBOT
-        *voltage = esp_adc_cal_raw_to_voltage(adc_reading, &adc1_chars) * 2; // Voltage divider is 1:1   // Altes Board
+        *voltage = *voltage * 2.0; // Voltage divider is 1:1   // Altes Board
     #else
-        *voltage = esp_adc_cal_raw_to_voltage(adc_reading, &adc1_chars) * ((4.7 + 2.2) / 4.7); // Voltage divider is 2.2 : 4.7
+        *voltage = *voltage * ((4.7 + 2.2) / 4.7); // Voltage divider is 2.2 : 4.7
     #endif
+    ESP_LOGI(TAG, "ADC%d Channel[%d] Korr Voltage: %lu mV", ADC_UNIT + 1, ADC_CHANNEL, *voltage);
 
     return ESP_OK;
 }
@@ -243,6 +268,7 @@ static void wifi_init(void)
     ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
     ESP_ERROR_CHECK( esp_wifi_start());
     ESP_ERROR_CHECK( esp_wifi_set_protocol(ESP_IF_WIFI_STA, WIFI_PROTOCOL_11B|WIFI_PROTOCOL_11G|WIFI_PROTOCOL_11N|WIFI_PROTOCOL_LR) );
+    ESP_ERROR_CHECK( esp_wifi_set_max_tx_power(84) );
 }
 
 
@@ -278,7 +304,7 @@ static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status
 * @param[in] len Length of the received data payload.
 * @return None
 */
-static void espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int len)
+static void espnow_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len)
 {
     ESP_LOGI(TAG, "esp-now receive callback");
     struct_pairing_response pairingResponse;
@@ -452,11 +478,11 @@ esp_err_t start_pairing(uint8_t *mac_addr, uint8_t *chan, uint8_t sensor_nr)
 
         ESP_ERROR_CHECK(esp_now_send(s_broadcast_mac, (uint8_t *) &pair_req, sizeof(struct_pairing_request)));
 
-        if (xQueueReceive(s_espnow_queue, &pair_resp, ESPNOW_MAXDELAY / portTICK_RATE_MS) == pdTRUE) {
+        if (xQueueReceive(s_espnow_queue, &pair_resp, ESPNOW_MAXDELAY / portTICK_PERIOD_MS) == pdTRUE) {
             ESP_LOGI(TAG, "Get Message");
             ESP_LOGI(TAG, "Received Sensor Nr: %d", pair_resp.sensor_nr);
             ESP_LOGI(TAG, "Received Channel: %d", pair_resp.channel);
-            ESP_LOGI(TAG, "Received MAC "MACSTR"", MAC2STR(pair_resp.macAddr));
+            //ESP_LOGI(TAG, "Received MAC "MACSTR"", MAC2STR(pair_resp.macAddr));
 
             memcpy(mac_addr, pair_resp.macAddr, ESP_NOW_ETH_ALEN);
             *chan = pair_resp.channel;
@@ -528,7 +554,7 @@ void app_main(){
     // ------- Read voltage value -------
     uint32_t voltage = 0;    
     ret = get_voltage(&voltage);
-    ESP_LOGI(TAG, "voltage: %d", voltage);
+    ESP_LOGI(TAG, "voltage: %lu", voltage);
 
 
     // ------- Read sensors -------
@@ -591,7 +617,7 @@ void app_main(){
     }
 
     ESP_LOGI(TAG, "NVS Channel: %d", chan);
-    ESP_LOGI(TAG, "NVS MAC "MACSTR"", MAC2STR(peer_mac));
+    //ESP_LOGI(TAG, "NVS MAC "MACSTR"", MAC2STR(peer_mac));
 
     add_peer(peer_mac, chan);
     esp_wifi_set_channel(chan, WIFI_SECOND_CHAN_NONE);
