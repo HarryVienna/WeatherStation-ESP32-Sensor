@@ -284,7 +284,7 @@ static void wifi_init(void)
 *          ESP_NOW_SEND_FAIL if the send operation failed.
 * @return void
 */
-static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status)
+static void espnow_send_cb(const wifi_tx_info_t *info, esp_now_send_status_t status)
 {
     if (status == ESP_NOW_SEND_SUCCESS) {
         xEventGroupSetBits(s_espnow_event_group, ESPNOW_SEND_SUCCESSFUL_BIT);

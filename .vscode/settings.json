@@ -78,5 +78,7 @@
         "hdc1080_sensor_driver.h": "c",
         "esp_event.h": "c"
     },
-    "cmake.cmakePath": "c:\\Users\\Harald\\.platformio\\packages\\tool-cmake\\bin\\cmake.exe"
+    "cmake.cmakePath": "c:\\Users\\Harald\\.platformio\\packages\\tool-cmake\\bin\\cmake.exe",
+    "idf.portWin": "COM8",
+    "idf.flashType": "UART"
 }
